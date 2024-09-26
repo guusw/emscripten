@@ -724,80 +724,81 @@ var LibraryPThread = {
 
     var offscreenCanvases = {}; // Dictionary of OffscreenCanvas objects we'll transfer to the created thread to own
     var moduleCanvasId = Module['canvas']?.id || '';
-    // Note that transferredCanvasNames might be null (so we cannot do a for-of loop).
-    for (var name of transferredCanvasNames) {
-      name = name.trim();
-      var offscreenCanvasInfo;
-      try {
-        if (name == '#canvas') {
-          if (!Module['canvas']) {
-            err(`pthread_create: could not find canvas with ID "${name}" to transfer to thread!`);
-            error = {{{ cDefs.EINVAL }}};
-            break;
+    if(transferredCanvasNames) {
+      for (var name of transferredCanvasNames) {
+        name = name.trim();
+        var offscreenCanvasInfo;
+        try {
+          if (name == '#canvas') {
+            if (!Module['canvas']) {
+              err(`pthread_create: could not find canvas with ID "${name}" to transfer to thread!`);
+              error = {{{ cDefs.EINVAL }}};
+              break;
+            }
+            name = Module['canvas'].id;
           }
-          name = Module['canvas'].id;
-        }
 #if ASSERTIONS
-        assert(typeof GL == 'object', 'OFFSCREENCANVAS_SUPPORT assumes GL is in use (you can force-include it with \'-sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$GL\')');
+          assert(typeof GL == 'object', 'OFFSCREENCANVAS_SUPPORT assumes GL is in use (you can force-include it with \'-sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$GL\')');
 #endif
-        if (GL.offscreenCanvases[name]) {
-          offscreenCanvasInfo = GL.offscreenCanvases[name];
-          GL.offscreenCanvases[name] = null; // This thread no longer owns this canvas.
-          if (Module['canvas'] instanceof OffscreenCanvas && name === Module['canvas'].id) Module['canvas'] = null;
-        } else if (!ENVIRONMENT_IS_PTHREAD) {
-          var canvas = (Module['canvas'] && Module['canvas'].id === name) ? Module['canvas'] : document.querySelector(name);
-          if (!canvas) {
-            err(`pthread_create: could not find canvas with ID "${name}" to transfer to thread!`);
-            error = {{{ cDefs.EINVAL }}};
-            break;
-          }
-          if (canvas.controlTransferredOffscreen) {
-            err(`pthread_create: cannot transfer canvas with ID "${name}" to thread, since the current thread does not have control over it!`);
-            error = {{{ cDefs.EPERM }}}; // Operation not permitted, some other thread is accessing the canvas.
-            break;
-          }
-          if (canvas.transferControlToOffscreen) {
+          if (GL.offscreenCanvases[name]) {
+            offscreenCanvasInfo = GL.offscreenCanvases[name];
+            GL.offscreenCanvases[name] = null; // This thread no longer owns this canvas.
+            if (Module['canvas'] instanceof OffscreenCanvas && name === Module['canvas'].id) Module['canvas'] = null;
+          } else if (!ENVIRONMENT_IS_PTHREAD) {
+            var canvas = (Module['canvas'] && Module['canvas'].id === name) ? Module['canvas'] : document.querySelector(name);
+            if (!canvas) {
+              err(`pthread_create: could not find canvas with ID "${name}" to transfer to thread!`);
+              error = {{{ cDefs.EINVAL }}};
+              break;
+            }
+            if (canvas.controlTransferredOffscreen) {
+              err(`pthread_create: cannot transfer canvas with ID "${name}" to thread, since the current thread does not have control over it!`);
+              error = {{{ cDefs.EPERM }}}; // Operation not permitted, some other thread is accessing the canvas.
+              break;
+            }
+            if (canvas.transferControlToOffscreen) {
 #if GL_DEBUG
-            dbg(`pthread_create: canvas.transferControlToOffscreen(), transferring canvas by name "${name}" (DOM id="${canvas.id}") from main thread to pthread`);
+              dbg(`pthread_create: canvas.transferControlToOffscreen(), transferring canvas by name "${name}" (DOM id="${canvas.id}") from main thread to pthread`);
 #endif
-            // Create a shared information block in heap so that we can control
-            // the canvas size from any thread.
-            if (!canvas.canvasSharedPtr) {
-              canvas.canvasSharedPtr = _malloc({{{ 8 + POINTER_SIZE }}});
-              {{{ makeSetValue('canvas.canvasSharedPtr', 0, 'canvas.width', 'i32') }}};
-              {{{ makeSetValue('canvas.canvasSharedPtr', 4, 'canvas.height', 'i32') }}};
-              {{{ makeSetValue('canvas.canvasSharedPtr', 8, 0, '*') }}}; // pthread ptr to the thread that owns this canvas, filled in below.
-            }
-            offscreenCanvasInfo = {
-              offscreenCanvas: canvas.transferControlToOffscreen(),
-              canvasSharedPtr: canvas.canvasSharedPtr,
-              id: canvas.id
-            }
-            // After calling canvas.transferControlToOffscreen(), it is no
-            // longer possible to access certain operations on the canvas, such
-            // as resizing it or obtaining GL contexts via it.
-            // Use this field to remember that we have permanently converted
-            // this Canvas to be controlled via an OffscreenCanvas (there is no
-            // way to undo this in the spec)
-            canvas.controlTransferredOffscreen = true;
-          } else {
-            err(`pthread_create: cannot transfer control of canvas "${name}" to pthread, because current browser does not support OffscreenCanvas!`);
-            // If building with OFFSCREEN_FRAMEBUFFER=1 mode, we don't need to
-            // be able to transfer control to offscreen, but WebGL can be
-            // proxied from worker to main thread.
+              // Create a shared information block in heap so that we can control
+              // the canvas size from any thread.
+              if (!canvas.canvasSharedPtr) {
+                canvas.canvasSharedPtr = _malloc({{{ 8 + POINTER_SIZE }}});
+                {{{ makeSetValue('canvas.canvasSharedPtr', 0, 'canvas.width', 'i32') }}};
+                {{{ makeSetValue('canvas.canvasSharedPtr', 4, 'canvas.height', 'i32') }}};
+                {{{ makeSetValue('canvas.canvasSharedPtr', 8, 0, '*') }}}; // pthread ptr to the thread that owns this canvas, filled in below.
+              }
+              offscreenCanvasInfo = {
+                offscreenCanvas: canvas.transferControlToOffscreen(),
+                canvasSharedPtr: canvas.canvasSharedPtr,
+                id: canvas.id
+              }
+              // After calling canvas.transferControlToOffscreen(), it is no
+              // longer possible to access certain operations on the canvas, such
+              // as resizing it or obtaining GL contexts via it.
+              // Use this field to remember that we have permanently converted
+              // this Canvas to be controlled via an OffscreenCanvas (there is no
+              // way to undo this in the spec)
+              canvas.controlTransferredOffscreen = true;
+            } else {
+              err(`pthread_create: cannot transfer control of canvas "${name}" to pthread, because current browser does not support OffscreenCanvas!`);
+              // If building with OFFSCREEN_FRAMEBUFFER=1 mode, we don't need to
+              // be able to transfer control to offscreen, but WebGL can be
+              // proxied from worker to main thread.
 #if !OFFSCREEN_FRAMEBUFFER
-            err('pthread_create: Build with -sOFFSCREEN_FRAMEBUFFER to enable fallback proxying of GL commands from pthread to main thread.');
-            return {{{ cDefs.ENOSYS }}}; // Function not implemented, browser doesn't have support for this.
+              err('pthread_create: Build with -sOFFSCREEN_FRAMEBUFFER to enable fallback proxying of GL commands from pthread to main thread.');
+              return {{{ cDefs.ENOSYS }}}; // Function not implemented, browser doesn't have support for this.
 #endif
+            }
           }
+          if (offscreenCanvasInfo) {
+            transferList.push(offscreenCanvasInfo.offscreenCanvas);
+            offscreenCanvases[offscreenCanvasInfo.id] = offscreenCanvasInfo;
+          }
+        } catch(e) {
+          err(`pthread_create: failed to transfer control of canvas "${name}" to OffscreenCanvas! Error: ${e}`);
+          return {{{ cDefs.EINVAL }}}; // Hitting this might indicate an implementation bug or some other internal error
         }
-        if (offscreenCanvasInfo) {
-          transferList.push(offscreenCanvasInfo.offscreenCanvas);
-          offscreenCanvases[offscreenCanvasInfo.id] = offscreenCanvasInfo;
-        }
-      } catch(e) {
-        err(`pthread_create: failed to transfer control of canvas "${name}" to OffscreenCanvas! Error: ${e}`);
-        return {{{ cDefs.EINVAL }}}; // Hitting this might indicate an implementation bug or some other internal error
       }
     }
 #endif // OFFSCREENCANVAS_SUPPORT

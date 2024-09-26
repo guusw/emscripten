@@ -3994,6 +3994,20 @@ Module["preRun"] = () => {
             '--pre-js=pre.js']
     self.btest('pthread/test_pthread_trap.c', expected='expected exception caught', args=args)
 
+
+  # Tests that the pthread_create works correctly with OFFSCREENCANVAS_SUPPORT enabled
+  @requires_offscreen_canvas
+  @requires_graphics_hardware
+  def test_pthread_create_offscreen(self):
+    self.btest_exit('test_pthread_create_offscreen.cpp', args=['-pthread', '-sPTHREAD_POOL_SIZE=2', '-sOFFSCREENCANVAS_SUPPORT', '-sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$GL', '-lGL'])
+
+  # Same as test_pthread_create_offscreen but passes OFFSCREENCANVASES_TO_PTHREAD
+  @requires_offscreen_canvas
+  @requires_graphics_hardware
+  def test_pthread_create_offscreen_fixed_attr(self):
+    self.btest_exit('test_pthread_create_offscreen.cpp', args=['-pthread', '-sPTHREAD_POOL_SIZE=2', '-sOFFSCREENCANVASES_TO_PTHREAD=#canvas', '-sOFFSCREENCANVAS_SUPPORT', '-sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$GL', '-lGL'])
+
+
   # Tests MAIN_THREAD_EM_ASM_INT() function call signatures.
   def test_main_thread_em_asm_signatures(self):
     self.btest_exit('core/test_em_asm_signatures.cpp', assert_returncode=121, args=[])
@@ -4130,7 +4144,7 @@ Module["preRun"] = () => {
     self.assertGreater(td_with_fallback, td_without_fallback)
     self.assertGreater(td_with_fallback, just_fallback)
 
-    # the fallback is also expected to be larger in code size than using td
+    # the fallback is alsoe expected to be larger in code size than using td
     self.assertGreater(just_fallback, td_without_fallback)
 
   def test_small_js_flags(self):
